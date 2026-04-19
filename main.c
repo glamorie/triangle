@@ -320,3 +320,111 @@ WindowTake(window* Window)
 
   Free(Window);
 };
+
+
+void
+WindowResize(window* Window, int Width, int Height)
+{
+  u32 ShouldResize = (
+    Window && Width >= 0 && Height >= 0 &&
+    (Window->Width != Width || Window->Height != Height)
+  );
+
+  if (!ShouldResize) return;
+
+  AppComRelease(Window->Target);
+
+  ID3D11Texture2D* BackBuffer = NULL;
+
+  Window->SwapChain->lpVtbl->ResizeBuffers(
+    Window->SwapChain, 0, Width, Height,
+    DXGI_FORMAT_UNKNOWN, 0
+  );
+
+  HRESULT Result = Window->SwapChain->lpVtbl->GetBuffer(
+    Window->SwapChain, 0, &IID_ID3D11Texture2D,
+    (void**)&BackBuffer
+  );
+
+  Window->Device->lpVtbl->CreateRenderTargetView(
+    Window->Device, (ID3D11Resource*)BackBuffer,
+    NULL, &Window->Target
+  );
+
+  AppComRelease(BackBuffer);
+
+  Window->Context->lpVtbl->OMSetRenderTargets(
+    Window->Context, 1, &Window->Target, NULL
+  );
+
+  D3D11_VIEWPORT ViewPort = {0};
+  ViewPort.Width = Width;
+  ViewPort.Height = Height;
+  ViewPort.MaxDepth = 1;
+
+  Window->Context->lpVtbl->RSSetViewports(
+    Window->Context, 1, &ViewPort
+  );
+
+  Window->Width = Width;
+  Window->Height = Height;
+};
+
+void
+WindowPaint(window* Window)
+{
+  if (!Window) return;
+
+  FLOAT Clear[4] = {0.2f, 0.15f, 0.11f, 1.0};
+
+  D3D11_VIEWPORT ViewPort = {0};
+  ViewPort.Width = Window->Width;
+  ViewPort.Height = Window->Height;
+  ViewPort.MaxDepth = 1;
+
+  Window->Context->lpVtbl->RSSetViewports(
+    Window->Context, 1, &ViewPort
+  );
+
+
+  Window->Context->lpVtbl->ClearRenderTargetView(
+    Window->Context, Window->Target,
+    Clear
+  );
+
+  Window->Context->lpVtbl->OMSetRenderTargets(
+    Window->Context, 1, &Window->Target,
+    NULL
+  );
+
+  Window->Context->lpVtbl->IASetPrimitiveTopology(
+    Window->Context, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST
+  );
+
+  Window->Context->lpVtbl->IASetInputLayout(
+    Window->Context, Window->InputLayout
+  );
+
+  UINT Stride = sizeof(vertex);
+  UINT Offset = 0;
+
+  
+  Window->Context->lpVtbl->IASetVertexBuffers(
+    Window->Context, 0, 1, &Window->VertexBuffer,
+    &Stride, &Offset
+  );
+
+  Window->Context->lpVtbl->PSSetShader(
+    Window->Context, Window->PixelShader, NULL,
+    0
+  );
+
+  Window->Context->lpVtbl->VSSetShader(
+    Window->Context, Window->VertexShader, NULL,
+    0
+  );
+
+  Window->Context->lpVtbl->Draw(Window->Context, 3, 0);
+
+  Window->SwapChain->lpVtbl->Present(Window->SwapChain, 1, 0);
+};
