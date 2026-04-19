@@ -428,3 +428,122 @@ WindowPaint(window* Window)
 
   Window->SwapChain->lpVtbl->Present(Window->SwapChain, 1, 0);
 };
+
+
+LRESULT CALLBACK
+WindowProc(HWND Hwnd, UINT Msg, WPARAM Wparam, LPARAM Lparam)
+{
+  window* Window = (window*)GetWindowLongPtrW(Hwnd, GWLP_USERDATA);
+
+  switch (Msg)
+  {
+    case WM_CREATE:
+    {
+      Window = WindowMake(Hwnd);
+      SetWindowLongPtrW(Hwnd, GWLP_USERDATA, (LONG_PTR)Window);
+      BOOL Dark = TRUE;
+      DwmSetWindowAttribute(Hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &Dark, sizeof(Dark));
+    } return 0;
+    case WM_DESTROY:
+    {
+      PostQuitMessage(0);
+      WindowTake(Window);
+    } return 0;
+    case WM_SIZE:
+    {
+      WindowResize(Window, LOWORD(Lparam), HIWORD(Lparam));
+    } return 0;
+    case WM_PAINT:
+    {
+      WindowPaint(Window);
+      ValidateRect(Hwnd, 0);
+    } return 0;
+  };
+  return DefWindowProcW(Hwnd, Msg, Wparam, Lparam);
+};
+
+void
+AppDisableDpiScaling(void)
+{
+  typedef BOOL WINAPI 
+  set_process_dpi_awareness_context(_In_ DPI_AWARENESS_CONTEXT value);
+
+  typedef BOOL WINAPI
+  set_process_dpi_aware(VOID);
+
+  HMODULE User32 = LoadLibraryA("User32.dll");
+
+  set_process_dpi_awareness_context* SetProcessDpiAwarenessContext = (void*)GetProcAddress(User32, "SetProcessDpiAwarenessContext");
+  set_process_dpi_aware* SetProcessDPIAware = (void*)GetProcAddress(User32, "SetProcessDPIAware");
+
+  if (!SetProcessDpiAwarenessContext || !SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) && SetProcessDPIAware)
+  {
+    SetProcessDPIAware();
+  };
+};
+
+window*
+WindowOpen(const char* Title, int Width, int Height)
+{
+  LPWSTR ClassName = L"Triangle.Window";
+  HINSTANCE Module = GetModuleHandleA(0);
+  WNDCLASSEXW Wc = {0};
+  Wc.cbSize = sizeof(Wc);
+  Wc.lpfnWndProc = WindowProc;
+  Wc.lpszClassName = ClassName;
+  Wc.hInstance = Module;
+  Wc.style = CS_HREDRAW;
+  Wc.hCursor = LoadCursorA(0, IDC_ARROW);
+  Wc.hIcon = LoadIconA(Module, MAKEINTRESOURCEA(101));
+  RegisterClassExW(&Wc);
+
+  LPWSTR Name = AppEncodeTitle(Title);
+
+  RECT Client = {0, 0, Width, Height};
+  AdjustWindowRect(&Client, WS_OVERLAPPEDWINDOW, TRUE);
+  Width = Client.right - Client.left;
+  Height = Client.bottom - Client.top;
+
+  HWND Hwnd = CreateWindowExW(
+    WS_EX_APPWINDOW, ClassName, Name, WS_OVERLAPPEDWINDOW,
+    CW_USEDEFAULT, CW_USEDEFAULT, Width, Height,
+    NULL, NULL, Module, NULL
+  );
+
+  Free(Name);
+
+  window* Window = (window*)GetWindowLongPtrW(Hwnd, GWLP_USERDATA);
+
+  return Window;
+};
+
+void
+WindowShow(window* Window)
+{
+  if (Window) ShowWindow(Window->Hwnd, SW_SHOWDEFAULT);
+};
+
+int wWinMain(HINSTANCE x, HINSTANCE y, LPWSTR z, int w)
+{
+  window* Window = WindowOpen("Triangle in D3D11!", 1200, 600);
+
+  WindowShow(Window);
+
+  MSG Msg = {0};
+
+  while (GetMessageW(&Msg, 0, 0, 0))
+  {
+    TranslateMessage(&Msg);
+    DispatchMessageW(&Msg);
+  };
+
+  return 0;
+};
+
+#pragma comment(lib, "user32.lib")
+#pragma comment(lib, "kernel32.lib")
+#pragma comment(lib, "gdi32.lib")
+#pragma comment(lib, "dwmapi.lib")
+#pragma comment(lib, "dxguid.lib")
+#pragma comment(lib, "d3d11.lib")
+#pragma comment(lib, "d3dcompiler.lib")
