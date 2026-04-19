@@ -11,6 +11,8 @@ pushd build
 echo Building...
 rc /nologo /fo assets.res ..\assets\assets.rc
 cl /Fe:Triangle.exe /Fo:Triangle.obj /nologo ..\main.c assets.res
+if not exist Shaders\ mkdir Shaders\
+if not exist Shaders\Shader.hlsl copy ..\Shaders\Shader.hlsl Shaders\Shader.hlsl> nul
 echo Build Success!
 popd
 popd
