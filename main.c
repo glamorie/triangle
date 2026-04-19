@@ -287,3 +287,36 @@ Cleanup:
   return Ok;
 };
 
+window*
+WindowMake(HWND Hwnd)
+{
+  window* Out = calloc(1, sizeof(*Out));
+
+  if (Out)
+  {
+    Out->Hwnd = Hwnd;
+
+    if (!WindowPrepareDevice(Out))
+    {
+      AppError("Could not initialize Direct X");
+    };
+  };
+  return Out;
+};
+
+void
+WindowTake(window* Window)
+{
+  if (!Window) return;
+
+  AppComRelease(Window->Device);
+  AppComRelease(Window->Context);
+  AppComRelease(Window->SwapChain);
+  AppComRelease(Window->Target);
+  AppComRelease(Window->InputLayout);
+  AppComRelease(Window->PixelShader);
+  AppComRelease(Window->VertexShader);
+  AppComRelease(Window->VertexBuffer);
+
+  Free(Window);
+};
