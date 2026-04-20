@@ -32,36 +32,6 @@ AppEncodeTitle(const char* String)
   return Out;
 };
 
-LPWSTR
-AppGetShaderPath(LPWSTR BaseName)
-{
-  wchar_t ExePath[32768];
-  usize Length = GetModuleFileNameW(NULL, ExePath, ARRAYSIZE(ExePath));
-  
-  usize Directory = 0;
-  
-  for (usize i = Length; i; i--)
-  {
-    if (ExePath[i - 1] == '\\')
-    {
-      Directory = i;
-      break;
-    };
-  };
-  
-  usize BaseLength = wcslen(BaseName);
-  usize Count = Directory + BaseLength;
-  u16* Out = malloc(sizeof(*Out) * (Count + 1));
-  
-  if (Out)
-  {
-    memcpy(Out, ExePath, Directory * 2);
-    memcpy(Out + Directory, BaseName, BaseLength * 2);
-    Out[Count] = 0;
-  };
-  return Out;
-};
-
 #define Free(x) if ((x)) free((void*)(x));
 
 void
@@ -117,6 +87,19 @@ struct window
   int Width, Height;
 };
 
+typedef struct shader_blob shader_blob;
+struct shader_blob
+{
+  void* Value;
+  usize Length;
+};
+
+#define ShaderBlobF_(x) {(void*)(x), ARRAYSIZE(x)}
+#define ShaderBlobF(x) ((shader_blob)ShaderBlobF_(x))
+
+extern shader_blob VertexShaderBlob;
+extern shader_blob PixelShaderBlob;
+
 u32
 WindowPrepareDevice(window* Window)
 {
@@ -148,9 +131,6 @@ WindowPrepareDevice(window* Window)
   Desc.SampleDesc.Count = 1;
   Desc.SampleDesc.Quality = 0;
 
-  LPWSTR ShaderPath = AppGetShaderPath(L"Shaders\\Shader.hlsl");
-  ID3DBlob* PsBlob = NULL;
-  ID3DBlob* VsBlob = NULL;
   ID3DBlob* ErrorBlob = NULL;
   ID3D11Texture2D* BackBuffer = NULL;
   
@@ -173,32 +153,17 @@ WindowPrepareDevice(window* Window)
       Device, (ID3D11Resource*)BackBuffer, NULL, &Target
     )
   );
-
-  AppCleanupHr(
-    D3DCompileFromFile(
-      ShaderPath, NULL, NULL, "VertexMain", "vs_5_0", 
-      0, 0, &VsBlob, &ErrorBlob
-    )
-  );
-
   AppCleanupHr(
     Device->lpVtbl->CreateVertexShader(
-      Device, VsBlob->lpVtbl->GetBufferPointer(VsBlob),
-      VsBlob->lpVtbl->GetBufferSize(VsBlob), NULL, &VertexShader
-    )
-  );
-
-  AppCleanupHr(
-    D3DCompileFromFile(
-      ShaderPath, NULL, NULL, "PixelMain", "ps_5_0", 
-      0, 0, &PsBlob, &ErrorBlob
+      Device, VertexShaderBlob.Value,
+      VertexShaderBlob.Length, NULL, &VertexShader
     )
   );
 
   AppCleanupHr(
     Device->lpVtbl->CreatePixelShader(
-      Device, PsBlob->lpVtbl->GetBufferPointer(PsBlob),
-      PsBlob->lpVtbl->GetBufferSize(PsBlob), NULL, &PixelShader
+      Device, PixelShaderBlob.Value, PixelShaderBlob.Length
+      , NULL, &PixelShader
     )
   );
 
@@ -211,8 +176,7 @@ WindowPrepareDevice(window* Window)
   AppCleanupHr(
     Device->lpVtbl->CreateInputLayout(
       Device, ElementDesc, ARRAYSIZE(ElementDesc), 
-      VsBlob->lpVtbl->GetBufferPointer(VsBlob), 
-      VsBlob->lpVtbl->GetBufferSize(VsBlob), &InputLayout
+      VertexShaderBlob.Value, VertexShaderBlob.Length, &InputLayout
     )
   );
 
@@ -256,11 +220,8 @@ WindowPrepareDevice(window* Window)
   Ok = 1;
   
 Cleanup:
-  AppComRelease(PsBlob);
-  AppComRelease(VsBlob);
   AppComRelease(ErrorBlob);
   AppComRelease(BackBuffer);
-  Free(ShaderPath);
   
   
   if (Ok)
@@ -547,3 +508,9 @@ int wWinMain(HINSTANCE x, HINSTANCE y, LPWSTR z, int w)
 #pragma comment(lib, "dxguid.lib")
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "d3dcompiler.lib")
+
+#include "Shaders/Shader.Vertex.h"
+#include "Shaders/Shader.Pixel.h"
+
+shader_blob VertexShaderBlob = ShaderBlobF_(g_VertexMain);
+shader_blob PixelShaderBlob = ShaderBlobF_(g_PixelMain);
