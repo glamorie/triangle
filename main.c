@@ -2,6 +2,7 @@
 #include <Windowsx.h>
 #include <dwmapi.h>
 #include <d3d11.h>
+#include <d3d11_1.h>
 #include <d3dcompiler.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -78,7 +79,10 @@ struct window
   HWND Hwnd;
   ID3D11Device* Device;
   ID3D11DeviceContext* Context;
-  IDXGISwapChain* SwapChain;
+  ID3D11Device1* Device1;
+  ID3D11DeviceContext1* Context1;
+  IDXGIFactory1* Factory;
+  IDXGISwapChain1* SwapChain;
   ID3D11RenderTargetView* Target;
   ID3D11InputLayout* InputLayout;
   ID3D11PixelShader* PixelShader;
@@ -106,7 +110,10 @@ WindowPrepareDevice(window* Window)
   u32 Ok = 0;
   ID3D11Device* Device = NULL;
   ID3D11DeviceContext* Context = NULL;
-  IDXGISwapChain* SwapChain = NULL;
+  ID3D11Device1* Device1 = NULL;
+  ID3D11DeviceContext1* Context1 = NULL;
+  IDXGIFactory2* Factory = NULL;
+  IDXGISwapChain1* SwapChain = NULL;
   ID3D11RenderTargetView* Target = NULL;
   ID3D11InputLayout* InputLayout = NULL;
   ID3D11PixelShader* PixelShader = NULL;
@@ -119,29 +126,62 @@ WindowPrepareDevice(window* Window)
   D3D_FEATURE_LEVEL FeatureLevel = 0;
   UINT Flags = D3D11_CREATE_DEVICE_DEBUG | D3D11_CREATE_DEVICE_SINGLETHREADED;
   
-  DXGI_SWAP_CHAIN_DESC Desc = {0};
-  Desc.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-  Desc.BufferDesc.Width = Width;
-  Desc.BufferDesc.Height = Height;
-  Desc.BufferCount = 2;
-  Desc.Windowed = TRUE;
-  Desc.OutputWindow = Window->Hwnd;
-  Desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
-  Desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-  Desc.SampleDesc.Count = 1;
-  Desc.SampleDesc.Quality = 0;
-
   ID3DBlob* ErrorBlob = NULL;
   ID3D11Texture2D* BackBuffer = NULL;
-  
+  IDXGIDevice* DeviceX = NULL;
+  IDXGIAdapter* Adapter = NULL;
+
   AppCleanupHr(
-    D3D11CreateDeviceAndSwapChain(
-      NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, Flags,
-      NULL, 0, D3D11_SDK_VERSION, &Desc, &SwapChain,
-      &Device, &FeatureLevel, &Context
+    D3D11CreateDevice(
+      NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, Flags, NULL, 0,
+      D3D11_SDK_VERSION, &Device, &FeatureLevel, &Context
     )
   );
-  
+
+  AppCleanupHr(
+    Device->lpVtbl->QueryInterface(
+      Device, &IID_IDXGIDevice,
+      (void**)&DeviceX
+    )
+  );
+
+  AppCleanupHr(
+    DeviceX->lpVtbl->GetAdapter(
+      DeviceX, &Adapter
+    )
+  );
+
+  AppCleanupHr(
+    Adapter->lpVtbl->GetParent(
+      Adapter, &IID_IDXGIFactory2, (void**)&Factory
+    )
+  );
+
+  AppCleanupHr(
+    Device->lpVtbl->QueryInterface(
+      Device, &IID_ID3D11Device1, (void**)&Device
+    )
+  );
+
+
+  DXGI_SWAP_CHAIN_DESC1 Desc = {0};
+  Desc.Width = Window->Width;
+  Desc.Height = Window->Height;
+
+  Desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM; // BGRA for DComp
+  Desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+  Desc.BufferCount = 2;
+  Desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+  Desc.SampleDesc.Count = 1;
+  Desc.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
+
+  AppCleanupHr(
+    Factory->lpVtbl->CreateSwapChainForHwnd(
+      Factory, (IUnknown*)Device, Window->Hwnd,
+      &Desc, NULL, NULL, &SwapChain
+    )
+  );
+
   AppCleanupHr(
     SwapChain->lpVtbl->GetBuffer(
       SwapChain, 0, &IID_ID3D11Texture2D, (void**)&BackBuffer
@@ -222,6 +262,8 @@ WindowPrepareDevice(window* Window)
 Cleanup:
   AppComRelease(ErrorBlob);
   AppComRelease(BackBuffer);
+  AppComRelease(DeviceX);
+  AppComRelease(Adapter);
   
   
   if (Ok)
@@ -466,7 +508,7 @@ WindowOpen(const char* Title, int Width, int Height)
   Height = Client.bottom - Client.top;
 
   HWND Hwnd = CreateWindowExW(
-    WS_EX_APPWINDOW, ClassName, Name, WS_OVERLAPPEDWINDOW,
+    WS_EX_APPWINDOW | WS_EX_NOREDIRECTIONBITMAP, ClassName, Name, WS_OVERLAPPEDWINDOW,
     CW_USEDEFAULT, CW_USEDEFAULT, Width, Height,
     NULL, NULL, Module, NULL
   );
